@@ -1,0 +1,49 @@
+# This is a GitHub Actions workflow file
+name: Deploy Game to GitHub Pages
+
+# Run this workflow every time you push to the 'main' branch
+on:
+  push:
+    branches: [ "main" ]
+
+# Allow this job to clone the repo and create a page deployment
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest # Use a clean Ubuntu Linux machine
+    steps:
+      - name: Checkout your repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pygbag pygame-ce
+
+      - name: Build the web game
+        run: pygbag --build .
+
+      - name: Upload artifact for deployment
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./build/web
+
+  deploy:
+    needs: build # This job runs only after the 'build' job succeeds
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
