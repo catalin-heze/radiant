@@ -29,7 +29,7 @@ COLOR_3 = '#B9FA00'
 COLOR_4 = '#FF0200'
 COLOR_5 = 'cyan'
 
-# --- NEW: Central Font Control Panel ---
+# --- Central Font Control Panel ---
 FONT_CONFIG = {
     # 'key_name': ('font_file_variable', size, line_spacing_multiplier),
     'title':        (FONT_PATH, 28, 1.2),
@@ -39,7 +39,7 @@ FONT_CONFIG = {
     'story':        (FONT_PATH_2, 24, 1.4),
     'prompt':       (FONT_PATH, 18, 1.0)
 }
-# --- This map will connect font objects to their spacing settings ---
+# --- font spacing settings ---
 FONT_SPACING_MAP = {}
 
 # SHIP
@@ -87,7 +87,7 @@ def load_fonts():
         for key, (font_path, font_size, line_spacing) in FONT_CONFIG.items():
             font = pygame.font.Font(font_path, font_size)
             loaded_fonts[key] = font
-            # Use the font's unique ID to store its spacing in the global map
+            #  font's unique ID to store its spacing in the global map
             FONT_SPACING_MAP[id(font)] = line_spacing
         return loaded_fonts
 
@@ -97,7 +97,7 @@ def load_fonts():
         for key, (font_path, font_size, line_spacing) in FONT_CONFIG.items():
             font = pygame.font.SysFont("monospace", font_size)
             fallback_fonts[key] = font
-            # Also populate the map for fallback fonts
+            # fallback fonts
             FONT_SPACING_MAP[id(font)] = line_spacing
         return fallback_fonts
 
@@ -292,19 +292,18 @@ async def run_scrolling_text_animation(screen, clock, fonts, text_lines, scroll_
         screen.blit(text_surface, (0, surface_y))
 
         if player_info:
-            # Assuming you have a draw_lives_display function, otherwise use draw_lives
+
             draw_lives(screen, player_info['lives'])
             draw_score(screen, fonts['score'], player_info['score'], player_info['total_points'])
 
         pygame.display.flip()
 
-        # Apply the universal frame rate control
+        # universal frame rate control
         if IS_WEB_BUILD:
             await asyncio.sleep(0)
         else:
             clock.tick(30)
 
-    # Replace the blocking wait with a non-blocking sleep
     if IS_WEB_BUILD:
         await asyncio.sleep(0.5)
     else:
@@ -340,7 +339,7 @@ async def show_level_complete_screen(screen, clock, fonts, level_index, lives, s
 
         pygame.display.flip()
 
-        # Apply the universal frame rate control
+        #universal frame rate control
         if IS_WEB_BUILD:
             await asyncio.sleep(0)
         else:
@@ -393,7 +392,7 @@ async def show_outro_screen(screen, clock, fonts, game_state, score, total_point
         # 2. Draw Final Score
         draw_text(screen, score_text, fonts['level_start'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.65 ))
 
-        # 3. *** NEW: Draw the Story Text ***
+        # 3. *** Draw the Story Text ***
         draw_text(screen, text_content['story'], fonts['story'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.45))
 
         # 4. Draw Name Entry Prompt
@@ -476,6 +475,7 @@ async def show_cover_screen(screen, clock, cover_image, duration_seconds):
         else:
             clock.tick(60)
 
+
 # --- Drone Shape Definitions ---
 DRONE_SHAPES = {
     'one': [
@@ -537,6 +537,7 @@ level4_boss_shape = [
              (7, 2), (7, 3),
     (8, 2), (8, 3),
     (9, 1), (9, 2), (9, 3),
+
     #core
     (7, 1)
 ]
@@ -688,11 +689,9 @@ def create_fleet(level_config):
     if num_rows == 0 and not fleet_layout:
         return fleet_ships
 
-    # This is a lambda to create a new drone with our new state variables
     create_drone = lambda row, col, parts: {
         'row': row, 'col': col, 'status': 'alive', 'parts': parts,
         'x': 0, 'y': 0,
-        # --- NEW STATE VARIABLES ---
         'hit_count': 0,
         'hits_on_left_wing': 0,
         'hits_on_right_wing': 0,
@@ -892,11 +891,10 @@ def draw_static_blueprint(screen, boss_x, boss_y, original_shape_offsets, ghost_
     blueprint_base_x = boss_x + ghost_offset[0]
     blueprint_base_y = boss_y + ghost_offset[1]
 
-    # To draw with transparency, we create a single small surface that we can reuse
+    # To draw with transparency
     part_surface = pygame.Surface((SIZE, SIZE), pygame.SRCALPHA)
     part_surface.fill(color_with_alpha)
 
-    # We iterate through the ORIGINAL shape definition, ignoring the live boss's state
     for part_offset in original_shape_offsets:
         part_x = blueprint_base_x + part_offset[0] * INTERNAL_SPACE
         part_y = blueprint_base_y + part_offset[1] * INTERNAL_SPACE
@@ -1071,13 +1069,11 @@ async def _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, drone
         draw_drone(screen, moving_drone)
     pygame.display.flip()
 
-    # Apply the universal frame rate control
     if IS_WEB_BUILD:
         await asyncio.sleep(0)
     else:
         clock.tick(60)
 
-    # The event loop needs to be in the main animation function
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
@@ -1179,7 +1175,6 @@ async def main():
     if cover_image_surface:
         # Show for a maximum of 5 seconds or until a key is pressed
         await show_cover_screen(screen, clock, cover_image_surface, 5)
-        # --- End of Cover Screen Implementation ---
 
     await run_scrolling_text_animation(screen, clock, fonts, STORY_TEXTS['intro'].splitlines())
     total_game_points = 0
@@ -1187,13 +1182,12 @@ async def main():
         temp_fleet = create_fleet(config)
         temp_battleship = create_battleship(config)
         for drone in temp_fleet:
-            # The max score for a drone is all part points + the destroy bonus
+
             total_game_points += len(drone['parts']) * DRONE_PART_POINTS + DRONE_DESTROY_BONUS
         if temp_battleship and temp_battleship.get('parts'):
-            # We leave the battleship scoring as is, but this could also be expanded later
+
             total_game_points += len(temp_battleship['parts']) * BATTLESHIP_PART_POINTS + BATTLESHIP_DESTROY_BONUS
 
-    # NEW: Outer loop to allow for restarting
     while True:
         raw_score = 0
         current_level_index = 0
@@ -1207,13 +1201,11 @@ async def main():
 
         running = True
         while running:
-            # --- NEW: State Machine Logic ---
+            # --- State Machine Logic ---
             if game_state == "intro":
-                # show_intro_screen(screen, clock, fonts)
                 game_state = "playing"
                 await run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state,
                                          LEVEL_CONFIGS[current_level_index])
-
 
             elif game_state == "level_complete":
                 # Check if the level we just finished is the last one in our list
@@ -1232,7 +1224,7 @@ async def main():
                     projectiles.clear()
                     ship_x = (CANVAS_WIDTH - ship_width) / 2
                     game_state = "playing"
-                    run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state, LEVEL_CONFIGS[current_level_index])
+                    await run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state, LEVEL_CONFIGS[current_level_index])
 
             elif game_state in ["win", "game_over"]:
                 if await show_outro_screen(screen, clock, fonts, game_state, raw_score, total_game_points):
