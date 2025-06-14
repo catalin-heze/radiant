@@ -259,14 +259,13 @@ def draw_text(screen, text, font, color, position, anchor="center"):
         screen.blit(text_surface, text_rect)
 
 
-def run_scrolling_text_animation(screen, clock, fonts, text_lines, scroll_speed=1, player_info=None):
+async def run_scrolling_text_animation(screen, clock, fonts, text_lines, scroll_speed=1, player_info=None):
     """
     Displays a block of text that scrolls up the screen.
     Waits for a key press to end.
     Optionally displays player lives and score at the bottom.
     """
     line_height = fonts['story'].get_height() * 1.6
-
     total_height = int(len(text_lines) * line_height)
     text_surface = pygame.Surface((CANVAS_WIDTH, total_height), pygame.SRCALPHA)
 
@@ -276,16 +275,16 @@ def run_scrolling_text_animation(screen, clock, fonts, text_lines, scroll_speed=
         text_surface.blit(text_render, text_rect)
 
     surface_y = CANVAS_HEIGHT
-
     scrolling = True
     while scrolling:
         for event in pygame.event.get():
-            if event.type == pygame.QUIT: pygame.quit(); exit()
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                sys.exit()
             if event.type == pygame.KEYDOWN:
                 scrolling = False
 
         surface_y -= scroll_speed
-
         if surface_y < -total_height:
             scrolling = False
 
@@ -293,16 +292,26 @@ def run_scrolling_text_animation(screen, clock, fonts, text_lines, scroll_speed=
         screen.blit(text_surface, (0, surface_y))
 
         if player_info:
-            draw_lives_display(screen, player_info['lives'])
+            # Assuming you have a draw_lives_display function, otherwise use draw_lives
+            draw_lives(screen, player_info['lives'])
             draw_score(screen, fonts['score'], player_info['score'], player_info['total_points'])
 
         pygame.display.flip()
-        clock.tick(30)
 
-    pygame.time.wait(500)
+        # Apply the universal frame rate control
+        if IS_WEB_BUILD:
+            await asyncio.sleep(0)
+        else:
+            clock.tick(30)
+
+    # Replace the blocking wait with a non-blocking sleep
+    if IS_WEB_BUILD:
+        await asyncio.sleep(0.5)
+    else:
+        pygame.time.wait(500)
 
 
-def show_level_complete_screen(screen, clock, fonts, level_index, lives, score, total_points):
+async def show_level_complete_screen(screen, clock, fonts, level_index, lives, score, total_points):
     key = f'level_{level_index}_complete'
     text_content = SCREEN_TEXT.get(key, {
         'title': f"Level {level_index} Complete",
@@ -310,26 +319,32 @@ def show_level_complete_screen(screen, clock, fonts, level_index, lives, score, 
         'prompt': "Press [SPACE] or [ENTER] to continue"
     })
 
-    while True:
+    running = True
+    while running:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_SPACE or event.key == pygame.K_RETURN:
-                    return
+                    running = False # Exit the loop to return from the function
 
         screen.fill(COLOR_1)
         draw_text(screen, text_content['title'], fonts['title'], COLOR_4, (CANVAS_WIDTH / 2, 96))
         story_y_start = 350
         for i, line in enumerate(text_content['story']):
             draw_text(screen, line, fonts['story'], COLOR_2, (CANVAS_WIDTH / 2, story_y_start + i * 40))
-        draw_text(screen, text_content['prompt'], fonts['prompt'], COLOR_3, (CANVAS_WIDTH / 2, CANVAS_HEIGHT - SIZE*  5))
+        draw_text(screen, text_content['prompt'], fonts['prompt'], COLOR_3, (CANVAS_WIDTH / 2, CANVAS_HEIGHT - SIZE * 5))
         draw_lives(screen, lives)
         draw_score(screen, fonts['score'], score, total_points)
 
         pygame.display.flip()
-        clock.tick(60)
+
+        # Apply the universal frame rate control
+        if IS_WEB_BUILD:
+            await asyncio.sleep(0)
+        else:
+            clock.tick(60)
 
 
 async def show_outro_screen(screen, clock, fonts, game_state, score, total_points):
@@ -1046,7 +1061,7 @@ def update_battleship_status(battleship, fleet, hit_by_projectile, fleet_dx):
                 battleship['dx'] = fleet_dx * BATTLESHIP_ACTIVE_SPEED_MULTIPLIER
 
 
-def _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, drones_to_draw, moving_drone=None, is_level_4=False):
+async def _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, drones_to_draw, moving_drone=None, is_level_4=False):
     screen.fill(COLOR_1)
     draw_battleship(screen, battleship, is_level_4)
     draw_ship(screen, ship_x, ship_y)
@@ -1055,27 +1070,32 @@ def _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, drones_to_d
     if moving_drone:
         draw_drone(screen, moving_drone)
     pygame.display.flip()
-    clock.tick(60)
+
+    # Apply the universal frame rate control
+    if IS_WEB_BUILD:
+        await asyncio.sleep(0)
+    else:
+        clock.tick(60)
+
+    # The event loop needs to be in the main animation function
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
 
 
-def run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state, level_config):
+async def run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state, level_config):
     if not fleet and not battleship.get('parts'):
-        # If there's nothing to deploy, just wait briefly
-        _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, [], None, level_config['level_number'] == 4)
-        pygame.time.wait(1500)
+        await _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, [], None, level_config['level_number'] == 4)
+        if IS_WEB_BUILD: await asyncio.sleep(1.5)
+        else: pygame.time.wait(1500)
         return
 
     is_level_4 = level_config['level_number'] == 4
     num_rows_in_level = level_config.get('num_rows', NUM_ROWS)
-
     deployed_drones = []
     animation_move_speed = DEPLOY_SPEED
     gap_width = DRONE_WIDTH + FLEET_SPACING
-
     deployment_y_start = fleet_state['y'] + DRONE_HEIGHT + FLEET_SPACING
 
     final_drone_positions = {}
@@ -1099,23 +1119,19 @@ def run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, f
 
             drone_to_deploy = drone_to_deploy_list[0]
             start_pos_y = battleship['y'] + battleship['height'] + SIZE
-
             center_x = CANVAS_WIDTH / 2 - DRONE_WIDTH / 2
             target_x, target_y = final_drone_positions[(row, col)]
-
             moving_drone = {'x': center_x, 'y': start_pos_y, 'parts': drone_to_deploy['parts'], 'status': 'alive'}
 
             while moving_drone['y'] < target_y:
                 moving_drone['y'] = min(target_y, moving_drone['y'] + animation_move_speed)
-                _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, deployed_drones, moving_drone,
-                                      is_level_4)
+                await _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, deployed_drones, moving_drone, is_level_4)
 
             move_dir = 1 if target_x > moving_drone['x'] else -1
             while (target_x - moving_drone['x']) * move_dir > 0:
                 moving_drone['x'] += animation_move_speed * move_dir
                 if (target_x - moving_drone['x']) * move_dir <= 0: moving_drone['x'] = target_x
-                _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, deployed_drones, moving_drone,
-                                      is_level_4)
+                await _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, deployed_drones, moving_drone, is_level_4)
 
             drone_to_deploy['x'], drone_to_deploy['y'] = target_x, target_y
             deployed_drones.append(drone_to_deploy)
@@ -1124,10 +1140,9 @@ def run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, f
         for i in range(30):
             for drone in fleet:
                 drone['x'] += (gap_width / 60) if drone['col'] < NUM_COLS / 2 else -(gap_width / 60)
-            _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, fleet, None, is_level_4=is_level_4)
+            await _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, fleet, None, is_level_4=is_level_4)
 
         fleet_state['x'] = fleet[0]['x'] - fleet[0]['col'] * (DRONE_WIDTH + FLEET_SPACING)
-
         final_combat_y = battleship['y'] + battleship['height'] + BATTLESHIP_FLEET_GAP
         current_fleet_y = fleet[0]['y']
 
@@ -1135,7 +1150,7 @@ def run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, f
             y_change = -2
             current_fleet_y += y_change
             for drone in fleet: drone['y'] += y_change
-            _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, fleet, None, is_level_4=is_level_4)
+            await _draw_animation_frame(screen, clock, battleship, ship_x, ship_y, fleet, None, is_level_4=is_level_4)
 
         y_correction = final_combat_y - current_fleet_y
         for drone in fleet: drone['y'] += y_correction
@@ -1166,7 +1181,7 @@ async def main():
         await show_cover_screen(screen, clock, cover_image_surface, 5)
         # --- End of Cover Screen Implementation ---
 
-    run_scrolling_text_animation(screen, clock, fonts, STORY_TEXTS['intro'].splitlines())
+    await run_scrolling_text_animation(screen, clock, fonts, STORY_TEXTS['intro'].splitlines())
     total_game_points = 0
     for config in LEVEL_CONFIGS:
         temp_fleet = create_fleet(config)
@@ -1196,7 +1211,7 @@ async def main():
             if game_state == "intro":
                 # show_intro_screen(screen, clock, fonts)
                 game_state = "playing"
-                run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state,
+                await run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state,
                                          LEVEL_CONFIGS[current_level_index])
 
 
@@ -1210,7 +1225,7 @@ async def main():
 
                 else:
                     # Otherwise, for any other level, show the complete screen
-                    show_level_complete_screen(screen, clock, fonts, current_level_index + 1, player_lives, raw_score, total_game_points)
+                    await show_level_complete_screen(screen, clock, fonts, current_level_index + 1, player_lives, raw_score, total_game_points)
                     current_level_index += 1
                     # Set up the next level to play
                     fleet, battleship, fleet_state = setup_level(current_level_index)
