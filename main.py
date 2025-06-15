@@ -3,7 +3,6 @@ import random
 import sys
 import os
 import asyncio
-import aiohttp
 IS_WEB_BUILD = sys.platform in ("emscripten", "wasi")
 
 # --- Control Center ---
@@ -17,8 +16,8 @@ SPACE = 2 * SIZE
 DIVIDER = SIZE / 3
 INTERNAL_SPACE = SIZE + DIVIDER
 NUM_COLS = Q
-NUM_ROWS = Q // 2 + Q // Q  # This evaluates to 3, which works for all levels
-PLAYER_LIVES = 2
+NUM_ROWS= Q // 2 + Q // Q  # This evaluates to 3, which works for all levels
+PLAYER_LIVES = 0
 FONT_PATH = "ZenDots-Regular.ttf"
 FONT_PATH_2 = "Exo2-VariableFont_wght.ttf"
 ALPHA = int(255 * 0.26)
@@ -73,11 +72,6 @@ DRONE_PART_POINTS = 10
 DRONE_DESTROY_BONUS = 50
 BATTLESHIP_PART_POINTS = 25
 BATTLESHIP_DESTROY_BONUS = 500
-
-# --- NEW: Leaderboard Configuration ---
-JSONBIN_URL = "https://api.jsonbin.io/v3/b/684e26aa8960c979a5aa0c87"
-JSONBIN_API_KEY = "$2a$10$YPkqOFz9TGlnHTMC1aW/s.xXnJPAE7P3fNG.P6ZEmQ.2UZ4ZaG82K"  # PASTE YOUR X-MASTER-KEY HERE
-MAX_SCORES_TO_KEEP = 100 # How many scores to show on the leaderboard
 
 
 # --- Font & Text Management ---
@@ -341,7 +335,7 @@ async def show_cover_screen(screen, clock, cover_image, duration_seconds):
             clock.tick(60)
 
 
-async def show_level_complete_screen(screen, clock, fonts, level_index, lives, score, total_game_points):
+async def show_level_complete_screen(screen, clock, fonts, level_index, lives, score, total_points):
     key = f'level_{level_index}_complete'
     text_content = SCREEN_TEXT.get(key, {
         'title': f"Level {level_index} Complete",
@@ -366,7 +360,7 @@ async def show_level_complete_screen(screen, clock, fonts, level_index, lives, s
             draw_text(screen, line, fonts['story'], COLOR_2, (CANVAS_WIDTH / 2, story_y_start + i * 40))
         draw_text(screen, text_content['prompt'], fonts['prompt'], COLOR_3, (CANVAS_WIDTH / 2, CANVAS_HEIGHT - SIZE * 5))
         draw_lives(screen, lives)
-        draw_score(screen, fonts['score'], score, total_game_points)
+        draw_score(screen, fonts['score'], score, total_points)
 
         pygame.display.flip()
 
@@ -377,65 +371,88 @@ async def show_level_complete_screen(screen, clock, fonts, level_index, lives, s
             clock.tick(60)
 
 
-async def show_outro_screen(screen, clock, fonts, game_state, score, total_game_points):
+async def show_outro_screen(screen, clock, fonts, game_state, score, total_points):
     text_content = SCREEN_TEXT[game_state]
-    final_display_score = int((score / total_game_points) * MAX_DISPLAY_SCORE) if total_game_points > 0 else 0
+    final_display_score = int((score / total_points) * MAX_DISPLAY_SCORE) if total_points > 0 else 0
     final_display_score = min(final_display_score, MAX_DISPLAY_SCORE)
     score_text = f"Final Score: {final_display_score:04d}"
 
+    # --- Variables for name entry ---
     player_name = ""
     cursor_visible = True
     last_cursor_toggle = pygame.time.get_ticks()
 
-    # This loop is only for entering the name
-    name_entry_running = True
-    while name_entry_running:
+    # The main loop for the single, unified screen
+    while True:
+        # --- Event Handling ---
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
             if event.type == pygame.KEYDOWN:
+                # Pressing ESC always quits
                 if event.key == pygame.K_ESCAPE:
-                    return None  # Signal to quit the game
-                if event.key == pygame.K_RETURN and player_name:
-                    final_name = player_name
-                    # Submit the score and exit this screen
-                    await submit_to_leaderboard(final_name, final_display_score)
-                    name_entry_running = False
+                    return False  # Quit
 
+                # Pressing RETURN confirms the name and restarts
+                if event.key == pygame.K_RETURN:
+                    # Use a default name if the player enters nothing
+                    final_name = player_name if player_name else "USER"
+                    print(f"Player: {final_name}, Score: {final_display_score}")
+                    return True  # Restart
+
+                # Handle name typing
                 if event.key == pygame.K_BACKSPACE:
                     player_name = player_name[:-1]
                 elif len(player_name) < 4 and event.unicode.isalnum():
                     player_name += event.unicode.upper()
 
+        # --- Unified Drawing Logic ---
         screen.fill(COLOR_1)
-        title_color = COLOR_4
-        draw_text(screen, text_content['title'], fonts['title'], title_color, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.2))
-        draw_text(screen, score_text, fonts['level_start'], COLOR_3, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.35))
-        draw_text(screen, "Enter Your Name:", fonts['story'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.5))
 
+        # 1. Draw Title at the top
+        title_color = COLOR_4 # if game_state == "win" else "red"
+        draw_text(screen, text_content['title'], fonts['title'], title_color, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.15))
+
+        # 2. Draw Final Score
+        draw_text(screen, score_text, fonts['level_start'], COLOR_3, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.45 ))
+
+        # 3. *** Draw the Story Text ***
+        # draw_text(screen, text_content['story'], fonts['story'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.45))
+
+        # 4. Draw Name Entry Prompt
+        draw_text(screen, "Enter Your Name:", fonts['story'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.5 ))
+
+        # 4.1. Create and Draw the "_ _ _ _" input field
         display_chars = list(player_name)
         while len(display_chars) < 4:
             display_chars.append('_')
         name_display_text = " ".join(display_chars)
-        draw_text(screen, name_display_text, fonts['level_start'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.6))
+        draw_text(screen, name_display_text, fonts['level_start'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.55))
 
-        draw_text(screen, "Press [ENTER] to save score", fonts['prompt'], COLOR_3,
-                  (CANVAS_WIDTH / 2, CANVAS_HEIGHT * 0.85))
+        # 5. Draw the final instructions at the bottom
+        draw_text(screen, text_content['prompt'], fonts['prompt'], COLOR_3, (CANVAS_WIDTH / 2, CANVAS_HEIGHT *0.90))
 
-        # Blinking cursor logic... (included for completeness)
+        # 6. Blinking cursor logic
         now = pygame.time.get_ticks()
-        if now - last_cursor_toggle > 750:
+        if now - last_cursor_toggle > 750:  # Toggle every 500ms
             cursor_visible = not cursor_visible
             last_cursor_toggle = now
+
         if cursor_visible:
+            # Calculate where the cursor should be
             base_text_width, _ = fonts['level_start'].size(name_display_text)
             char_widths = [fonts['level_start'].size(c)[0] for c in display_chars]
+
+            # Position cursor after the last typed character
             cursor_pos_x_offset = sum(char_widths[:len(player_name)]) + (
                         fonts['level_start'].size(" ")[0] * len(player_name))
+
+            # Center the whole text block first, then add the offset
             start_x = (CANVAS_WIDTH / 2) - (base_text_width / 2)
             cursor_x = start_x + cursor_pos_x_offset
-            cursor_y = CANVAS_HEIGHT * 0.6
+            cursor_y = CANVAS_HEIGHT * 0.55
+
             cursor_rect = pygame.Rect(cursor_x - 2, cursor_y - 12, 4, 24)
             pygame.draw.rect(screen, COLOR_4, cursor_rect)
 
@@ -445,120 +462,6 @@ async def show_outro_screen(screen, clock, fonts, game_state, score, total_game_
         else:
             clock.tick(60)
 
-    # After name entry, just return to signal we should show the leaderboard
-    return True
-
-
-async def show_leaderboard_screen(screen, clock, fonts):
-    # Fetch scores once when the screen loads
-    leaderboard_data = await get_leaderboard()
-
-    scroll_offset = 0
-    scroll_speed = 30  # Pixels per scroll action
-
-    running = True
-    while running:
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                return False  # Signal to quit
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_RETURN:
-                    return True  # Signal to restart
-                if event.key == pygame.K_ESCAPE:
-                    return False  # Signal to quit
-                # Keyboard scrolling
-                if event.key == pygame.K_UP:
-                    scroll_offset -= scroll_speed
-                if event.key == pygame.K_DOWN:
-                    scroll_offset += scroll_speed
-            # Mousewheel scrolling
-            if event.type == pygame.MOUSEWHEEL:
-                scroll_offset -= event.y * scroll_speed
-
-        # Prevent scrolling too far up
-        scroll_offset = min(scroll_offset, 0)
-
-        # --- Drawing Logic ---
-        screen.fill(COLOR_1)
-        draw_text(screen, "HIGH SCORES", fonts['title'], COLOR_3, (CANVAS_WIDTH / 2, 80))
-
-        if not leaderboard_data:
-            draw_text(screen, "Could not load scores.", fonts['story'], COLOR_2, (CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2))
-        else:
-            # Determine max scroll based on content height
-            content_height = len(leaderboard_data) * 40
-            max_scroll = content_height - (CANVAS_HEIGHT - 260)  # Keep some padding
-            scroll_offset = max(scroll_offset, -max_scroll)
-
-            y_pos = 150 - scroll_offset  # Start drawing from the offset
-            for i, entry in enumerate(leaderboard_data):
-                # Only draw entries that are potentially visible
-                if y_pos > 50 and y_pos < CANVAS_HEIGHT - 100:
-                    rank_text = f"#{i + 1}"
-                    name_text = entry.get("name", "N/A")
-                    score_text = f'{entry.get("score", 0):04d}'
-
-                    draw_text(screen, rank_text, fonts['level_start'], COLOR_2, (200, y_pos), anchor="midleft")
-                    draw_text(screen, name_text, fonts['level_start'], COLOR_2, (CANVAS_WIDTH / 2, y_pos),
-                              anchor="center")
-                    draw_text(screen, score_text, fonts['level_start'], COLOR_2, (CANVAS_WIDTH - 200, y_pos),
-                              anchor="midright")
-                y_pos += 40
-
-        draw_text(screen, "Press [ENTER] to Play Again or [ESC] to Quit", fonts['prompt'], COLOR_3,
-                  (CANVAS_WIDTH / 2, CANVAS_HEIGHT - 60))
-
-        pygame.display.flip()
-        if IS_WEB_BUILD:
-            await asyncio.sleep(0)
-        else:
-            clock.tick(60)
-
-    return True  # Default to restart
-
-
-async def get_leaderboard():
-    """Fetches the leaderboard data from JSONBin.io using aiohttp."""
-    try:
-        # aiohttp works with a "session" context manager
-        async with aiohttp.ClientSession() as session:
-            headers = {'X-Master-Key': JSONBIN_API_KEY}
-            async with session.get(JSONBIN_URL + "/latest", headers=headers) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    # Safely get the 'record' key, default to empty list if not found
-                    return data.get('record', [])
-                else:
-                    print(f"Error fetching leaderboard: {response.status}")
-                    return []
-    except Exception as e:
-        print(f"An exception occurred while fetching scores: {e}")
-        return []
-
-
-async def submit_to_leaderboard(player_name, new_score):
-    """Submits a new score to the leaderboard on JSONBin.io using aiohttp."""
-    print(f"Submitting score: {player_name} - {new_score}")
-    leaderboard = await get_leaderboard()
-
-    leaderboard.append({"name": player_name, "score": new_score})
-    leaderboard.sort(key=lambda item: item['score'], reverse=True)
-    updated_leaderboard = leaderboard[:MAX_SCORES_TO_KEEP]
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            headers = {
-                'Content-Type': 'application/json',
-                'X-Master-Key': JSONBIN_API_KEY
-            }
-            # Use session.put to send the updated data
-            async with session.put(JSONBIN_URL, json=updated_leaderboard, headers=headers) as response:
-                if response.status == 200:
-                    print("Score submitted successfully.")
-                else:
-                    print(f"Error submitting score: {response.status}")
-    except Exception as e:
-        print(f"An exception occurred while submitting score: {e}")
 
 
 
@@ -1314,23 +1217,10 @@ async def main():
                     await run_deployment_animation(screen, clock, fleet, battleship, ship_x, ship_y, fleet_state, LEVEL_CONFIGS[current_level_index])
 
             elif game_state in ["win", "game_over"]:
-                # --- THIS IS THE CORRECTED LOGIC BLOCK ---
-                # Stage 1: Get the player's name and submit the score.
-                submit_result = await show_outro_screen(screen, clock, fonts, game_state, raw_score, total_game_points)
-                # If the player pressed ESC on the name entry screen, quit the game entirely.
-                if submit_result is None:
-                    pygame.quit()
-                    sys.exit()
-                # Stage 2: After the score is submitted, show the leaderboard screen.
-                # This line MUST NOT be indented inside the 'if' statement above.
-                leaderboard_result = await show_leaderboard_screen(screen, clock, fonts)
-                # Now, decide what to do based on the result of the leaderboard screen.
-                if leaderboard_result:
-                    # If leaderboard returns True (player pressed ENTER), restart the game.
-                    running = False
+                if await show_outro_screen(screen, clock, fonts, game_state, raw_score, total_game_points):
+                    running = False  # Break from inner loop to restart game
                 else:
-                    # If leaderboard returns False (player pressed ESC), quit the game.
-                    pygame.quit()
+                    pygame.quit()  # Quit entirely
                     sys.exit()
 
             elif game_state == "playing":
